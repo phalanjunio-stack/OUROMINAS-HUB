@@ -1,0 +1,366 @@
+// Ouro de Minas Hub — schema de dados.
+//
+// Provider atual: sqlite (arquivo local, zero configuração).
+// Para trocar para Postgres: mude `provider` para "postgresql", aponte
+// DATABASE_URL para a connection string real e rode `npx prisma migrate dev`.
+// SQLite não suporta enum nem colunas de lista nativas, então esses campos
+// usam String (valores fixos validados em src/lib/constants.ts, ou JSON
+// serializado com src/lib/json.ts). Ambos continuam funcionando sem mudança
+// nenhuma depois da troca para Postgres — são só mais restritos do que os
+// tipos nativos que o Postgres poderia oferecer.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Usuários e acesso =====
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  role          String // ADMIN | DIRETORIA | MARKETING | DESIGNER | FINANCEIRO | REPRESENTANTE | SOLICITANTE
+  jobTitle      String?
+  department    String?
+  avatarUrl     String?
+  status        String    @default("ATIVO") // ATIVO | INATIVO
+  lastAccessAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  demandsRequested Demand[]         @relation("DemandRequester")
+  demandsAssigned  Demand[]         @relation("DemandAssignee")
+  versionsUploaded DemandVersion[]
+  comments         DemandComment[]
+  approvals        Approval[]
+  activityLogs     ActivityLog[]
+  notifications    Notification[]
+  mediaUploaded    MediaFile[]
+  publications     Publication[]
+  representative   Representative?
+}
+
+// ===== Demandas (Kanban) =====
+
+model Demand {
+  id             String    @id @default(cuid())
+  code           String    @unique // DOM-2026-0148
+  title          String
+  description    String?
+  requesterId    String
+  requester      User      @relation("DemandRequester", fields: [requesterId], references: [id])
+  department     String?
+  assigneeId     String?
+  assignee       User?     @relation("DemandAssignee", fields: [assigneeId], references: [id])
+  priority       String    @default("MEDIA") // BAIXA | MEDIA | ALTA | URGENTE
+  dueDate        DateTime?
+  campaignId     String?
+  campaign       Campaign? @relation(fields: [campaignId], references: [id])
+  materialType   String // Feed Instagram, Story, Reel, Banner, ...
+  formats        String    @default("[]") // JSON string[]
+  referencesNote String?
+  region         String?
+  status         String    @default("NOVA") // NOVA|BRIEFING|EM_PRODUCAO|PARA_APROVACAO|AJUSTES|APROVADO|AGENDADO|PUBLICADO|ARQUIVADO
+  position       Int       @default(0) // ordem dentro da coluna do kanban
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  versions    DemandVersion[]
+  comments    DemandComment[]
+  checklist   DemandChecklistItem[]
+  approvals   Approval[]
+  attachments DemandAttachment[]
+  publication Publication[]
+
+  @@index([status])
+}
+
+model DemandAttachment {
+  id        String   @id @default(cuid())
+  demandId  String
+  demand    Demand   @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  mimeType  String?
+  sizeBytes Int?
+  createdAt DateTime @default(now())
+}
+
+model DemandVersion {
+  id           String   @id @default(cuid())
+  demandId     String
+  demand       Demand   @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  label        String // V01, V02, FINAL_APROVADO
+  fileUrl      String
+  thumbnailUrl String?
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  isFinal      Boolean  @default(false)
+  uploadedAt   DateTime @default(now())
+
+  comments  DemandComment[]
+  approvals Approval[]
+}
+
+model DemandComment {
+  id        String         @id @default(cuid())
+  demandId  String
+  demand    Demand         @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  versionId String?
+  version   DemandVersion? @relation(fields: [versionId], references: [id])
+  authorId  String
+  author    User           @relation(fields: [authorId], references: [id])
+  text      String
+  xPercent  Float? // posição do pino sobre a imagem, 0-100
+  yPercent  Float?
+  resolved  Boolean        @default(false)
+  createdAt DateTime       @default(now())
+}
+
+model DemandChecklistItem {
+  id       String  @id @default(cuid())
+  demandId String
+  demand   Demand  @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  label    String
+  done     Boolean @default(false)
+  position Int     @default(0)
+}
+
+model Approval {
+  id         String         @id @default(cuid())
+  demandId   String
+  demand     Demand         @relation(fields: [demandId], references: [id], onDelete: Cascade)
+  versionId  String?
+  version    DemandVersion? @relation(fields: [versionId], references: [id])
+  approverId String
+  approver   User           @relation(fields: [approverId], references: [id])
+  level      Int            @default(1)
+  status     String         @default("PENDENTE") // PENDENTE | APROVADO | AJUSTES | REPROVADO
+  comment    String?
+  decidedAt  DateTime?
+  createdAt  DateTime       @default(now())
+}
+
+// ===== Campanhas e calendário =====
+
+model Campaign {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  color       String?
+  status      String   @default("PLANEJADA") // PLANEJADA | EM_ANDAMENTO | CONCLUIDA
+  createdAt   DateTime @default(now())
+
+  demands      Demand[]
+  events       CalendarEvent[]
+  publications Publication[]
+  mediaFiles   MediaFile[]
+  expenses     Expense[]
+  materials    GeneratedMaterial[]
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  title       String
+  date        DateTime
+  endDate     DateTime?
+  type        String // CAMPANHA | EVENTO | DATA_COMEMORATIVA | LANCAMENTO | PUBLICACAO | TREINAMENTO
+  color       String?
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id])
+  description String?
+  createdAt   DateTime  @default(now())
+}
+
+// ===== Publicados =====
+
+model Publication {
+  id            String    @id @default(cuid())
+  demandId      String?
+  demand        Demand?   @relation(fields: [demandId], references: [id])
+  title         String
+  channel       String // INSTAGRAM|FACEBOOK|WHATSAPP|SITE|IMPRESSO|PDV|REPRESENTANTES|EVENTOS
+  publishedAt   DateTime  @default(now())
+  fileUrl       String?
+  thumbnailUrl  String?
+  campaignId    String?
+  campaign      Campaign? @relation(fields: [campaignId], references: [id])
+  responsibleId String?
+  responsible   User?     @relation(fields: [responsibleId], references: [id])
+  reuseCount    Int       @default(0)
+  engagement    Int?
+  createdAt     DateTime  @default(now())
+}
+
+// ===== Galeria / arquivos =====
+
+model MediaFile {
+  id              String    @id @default(cuid())
+  name            String
+  category        String // PRODUTOS|CAMPANHAS|EVENTOS|INSTITUCIONAL|REPRESENTANTES|FABRICA
+  type            String // FOTO|VIDEO|ARTE|EDITAVEL
+  mimeType        String?
+  sizeBytes       Int?
+  width           Int?
+  height          Int?
+  durationSeconds Int?
+  url             String
+  thumbnailUrl    String?
+  campaignId      String?
+  campaign        Campaign? @relation(fields: [campaignId], references: [id])
+  tags            String    @default("[]") // JSON string[]
+  status          String    @default("APROVADO") // APROVADO | PENDENTE | REPROVADO
+  version         String    @default("v1.0")
+  reuseCount      Int       @default(0)
+  uploadedById    String?
+  uploadedBy      User?     @relation(fields: [uploadedById], references: [id])
+  createdAt       DateTime  @default(now())
+
+  @@index([category])
+  @@index([type])
+}
+
+model BrandAsset {
+  id                 String   @id @default(cuid())
+  name               String
+  category           String // LOGO|MANUAL|PALETA|FONTE|TEMPLATE|EMBALAGEM|MOCKUP|FOTO_OFICIAL|ASSINATURA
+  fileUrl            String
+  forInternalUseOnly Boolean  @default(false)
+  createdAt          DateTime @default(now())
+}
+
+// ===== Representantes =====
+
+model Representative {
+  id        String   @id @default(cuid())
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id])
+  name      String
+  email     String?
+  phone     String?
+  region    String?
+  status    String   @default("ATIVO")
+  createdAt DateTime @default(now())
+
+  materials GeneratedMaterial[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String?  @unique
+  category    String?
+  imageUrl    String?
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model MaterialTemplate {
+  id             String   @id @default(cuid())
+  name           String
+  type           String
+  category       String?
+  previewUrl     String?
+  editableFields String   @default("[]") // JSON string[]
+  createdAt      DateTime @default(now())
+
+  materials GeneratedMaterial[]
+}
+
+model GeneratedMaterial {
+  id               String            @id @default(cuid())
+  representativeId String
+  representative   Representative    @relation(fields: [representativeId], references: [id])
+  templateId       String?
+  template         MaterialTemplate? @relation(fields: [templateId], references: [id])
+  productIds       String            @default("[]") // JSON string[]
+  campaignId       String?
+  campaign         Campaign?         @relation(fields: [campaignId], references: [id])
+  fields           String            @default("{}") // JSON: nome, telefone, cidade, preco...
+  fileUrl          String?
+  createdAt        DateTime          @default(now())
+}
+
+// ===== Financeiro de marketing =====
+
+model Supplier {
+  id       String   @id @default(cuid())
+  name     String
+  category String // GRAFICA|FOTOGRAFIA|VIDEO|EVENTOS|BRINDES|IMPRESSAO|COMUNICACAO_VISUAL|MIDIA|OUTROS
+  phone    String?
+  whatsapp String?
+  email    String?
+  cnpj     String?
+  city     String?
+  notes    String?
+  createdAt DateTime @default(now())
+
+  expenses Expense[]
+}
+
+model Expense {
+  id            String    @id @default(cuid())
+  description   String
+  category      String // GRAFICA|MIDIA_PAGA|EVENTOS|BRINDES|FOTOGRAFIA|VIDEO|INFLUENCIADORES|IMPRESSOS|MATERIAIS_PDV|OUTROS
+  amount        Float
+  campaignId    String?
+  campaign      Campaign? @relation(fields: [campaignId], references: [id])
+  supplierId    String?
+  supplier      Supplier? @relation(fields: [supplierId], references: [id])
+  invoiceUrl    String?
+  budgetPlanned Float?
+  status        String    @default("PENDENTE") // PENDENTE | PAGO
+  paymentDate   DateTime?
+  costCenter    String?
+  createdAt     DateTime  @default(now())
+}
+
+model Budget {
+  id            String   @id @default(cuid())
+  month         Int
+  year          Int
+  category      String?
+  plannedAmount Float
+  createdAt     DateTime @default(now())
+
+  @@unique([month, year, category])
+}
+
+// ===== Sistema =====
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String
+  entityType  String?
+  entityId    String?
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  body      String?
+  type      String   @default("INFO")
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}

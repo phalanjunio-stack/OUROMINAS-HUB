@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  --hub-ink: #2c1810;
+  --hub-brown-950: #1b1108;
+  --hub-brown-900: #2a180f;
+  --hub-brown-800: #3a2418;
+  --hub-brown: #42130d;
+  --hub-brown-soft: #6f3427;
+  --hub-caramel: #a8632f;
+  --hub-gold: #d4a017;
+  --hub-gold-light: #e9c565;
+  --hub-cream: #fdfaf5;
+  --hub-paper: #f7f1e6;
+  --hub-sand: #efe6d6;
+  --hub-line: rgba(66, 19, 13, 0.12);
+  --hub-line-soft: rgba(255, 255, 255, 0.1);
+  --hub-green: #3f8a4f;
+  --hub-red: #b3392c;
+  --hub-blue: #3c6e9b;
+}
+
+@theme inline {
+  --color-hub-ink: var(--hub-ink);
+  --color-hub-brown-950: var(--hub-brown-950);
+  --color-hub-brown-900: var(--hub-brown-900);
+  --color-hub-brown-800: var(--hub-brown-800);
+  --color-hub-brown: var(--hub-brown);
+  --color-hub-brown-soft: var(--hub-brown-soft);
+  --color-hub-caramel: var(--hub-caramel);
+  --color-hub-gold: var(--hub-gold);
+  --color-hub-gold-light: var(--hub-gold-light);
+  --color-hub-cream: var(--hub-cream);
+  --color-hub-paper: var(--hub-paper);
+  --color-hub-sand: var(--hub-sand);
+  --color-hub-green: var(--hub-green);
+  --color-hub-red: var(--hub-red);
+  --color-hub-blue: var(--hub-blue);
+  --font-sans: var(--font-manrope), Arial, sans-serif;
+  --font-display: var(--font-cormorant), Georgia, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--hub-paper);
+  color: var(--hub-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(66, 19, 13, 0.18);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(66, 19, 13, 0.3);
+}
+
+@keyframes hub-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.hub-animate-in {
+  animation: hub-fade-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
