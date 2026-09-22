@@ -1,21 +1,23 @@
 // Ouro de Minas Hub — schema de dados.
 //
-// Provider atual: sqlite (arquivo local, zero configuração).
-// Para trocar para Postgres: mude `provider` para "postgresql", aponte
-// DATABASE_URL para a connection string real e rode `npx prisma migrate dev`.
-// SQLite não suporta enum nem colunas de lista nativas, então esses campos
-// usam String (valores fixos validados em src/lib/constants.ts, ou JSON
-// serializado com src/lib/json.ts). Ambos continuam funcionando sem mudança
-// nenhuma depois da troca para Postgres — são só mais restritos do que os
-// tipos nativos que o Postgres poderia oferecer.
+// Postgres (Supabase, via integração Vercel). `url` usa a conexão com
+// pooler (PgBouncer) para as queries normais da aplicação; `directUrl` usa
+// a conexão direta, necessária para o Prisma Migrate (o pooler transacional
+// não suporta os comandos que uma migração precisa rodar).
+//
+// Os campos que antes eram enum/lista continuam como String (valores fixos
+// em src/lib/constants.ts, listas serializadas com src/lib/json.ts) — dava
+// pra migrar para tipos nativos do Postgres agora, mas manter como estava
+// evita reescrever schema e app juntos; fica como próximo passo isolado.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 // ===== Usuários e acesso =====
